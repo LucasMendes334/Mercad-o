@@ -95,6 +95,7 @@
         <p>Tempo restante: <span id="timer">0</span> s</p>
         <p>Lance atual: R$ <span id="lanceAtual">0</span></p>
         <p>Usuário atual: <span id="usuarioAtual">Nenhum</span></p>
+        <p>Vencedor: <span id="vencedor">Nenhum</span></p>
         <input type="text" id="usuario" placeholder="Seu nome">
         <input type="number" id="lance" placeholder="Digite seu lance">
         <button class="lance-btn" onclick="darLance()">Dar Lance</button>
@@ -172,8 +173,9 @@
           const lanceAtual = document.getElementById('lanceAtual');
           const timer = document.getElementById('timer');
           const usuarioAtual = document.getElementById('usuarioAtual');
+          const vencedor = document.getElementById('vencedor');
 
-          if (!itemLeilao || !lanceMinimo || !tempoInicial || !itemAtual || !lanceAtual || !timer || !usuarioAtual) {
+          if (!itemLeilao || !lanceMinimo || !tempoInicial || !itemAtual || !lanceAtual || !timer || !usuarioAtual || !vencedor) {
             console.error('DOM elements for auction not found');
             alert('Erro: Elementos do leilão não encontrados.');
             return;
@@ -208,6 +210,7 @@
               lanceAtual.textContent = minBid;
               timer.textContent = time;
               usuarioAtual.textContent = 'Nenhum';
+              vencedor.textContent = 'Nenhum';
               itemLeilao.value = '';
               lanceMinimo.value = '';
               tempoInicial.value = '';
@@ -244,19 +247,28 @@
 
         if (currentTimeRemaining <= 0) {
           clearInterval(auctionTimer);
-          db.ref('auctions/auction1').update({ active: false })
-            .then(() => {
-              console.log('Auction ended');
-              document.getElementById('itemAtual').textContent = 'Nenhum';
-              document.getElementById('lanceAtual').textContent = 0;
-              document.getElementById('timer').textContent = 0;
-              document.getElementById('usuarioAtual').textContent = 'Nenhum';
-              alert('Leilão encerrado!');
-            })
-            .catch(error => {
-              console.error('Failed to end auction:', error);
-              alert('Erro ao encerrar o leilão.');
-            });
+          db.ref('auctions/auction1').once('value').then(snapshot => {
+            const auction = snapshot.val();
+            const vencedor = document.getElementById('vencedor');
+            if (auction && auction.currentUser !== 'Nenhum') {
+              vencedor.textContent = `${auction.currentUser} ganhou o leilão do item ${auction.item}!`;
+            } else {
+              vencedor.textContent = 'Nenhum lance foi dado.';
+            }
+            db.ref('auctions/auction1').update({ active: false })
+              .then(() => {
+                console.log('Auction ended');
+                document.getElementById('itemAtual').textContent = 'Nenhum';
+                document.getElementById('lanceAtual').textContent = 0;
+                document.getElementById('timer').textContent = 0;
+                document.getElementById('usuarioAtual').textContent = 'Nenhum';
+                alert('Leilão encerrado!');
+              })
+              .catch(error => {
+                console.error('Failed to end auction:', error);
+                alert('Erro ao encerrar o leilão.');
+              });
+          });
         }
       }, 1000);
     }
@@ -267,8 +279,9 @@
       const lanceAtual = document.getElementById('lanceAtual');
       const usuarioAtual = document.getElementById('usuarioAtual');
       const timer = document.getElementById('timer');
+      const vencedor = document.getElementById('vencedor');
 
-      if (!usuario || !lance || !lanceAtual || !usuarioAtual || !timer) {
+      if (!usuario || !lance || !lanceAtual || !usuarioAtual || !timer || !vencedor) {
         console.error('DOM elements for bidding not found');
         alert('Erro: Elementos do lance não encontrados.');
         return;
@@ -325,6 +338,7 @@
               if (newTimeRemaining !== auction.timeRemaining) {
                 timer.textContent = newTimeRemaining;
               }
+              vencedor.textContent = 'Nenhum'; // Limpa mensagem de vencedor durante o leilão
               usuario.value = '';
               lance.value = '';
             })
@@ -346,8 +360,9 @@
       const lanceAtual = document.getElementById('lanceAtual');
       const timer = document.getElementById('timer');
       const usuarioAtual = document.getElementById('usuarioAtual');
+      const vencedor = document.getElementById('vencedor');
 
-      if (!itemAtual || !lanceAtual || !timer || !usuarioAtual) {
+      if (!itemAtual || !lanceAtual || !timer || !usuarioAtual || !vencedor) {
         console.error('DOM elements for auction updates not found');
         return;
       }
@@ -357,6 +372,7 @@
         lanceAtual.textContent = auction.currentBid || 0;
         timer.textContent = auction.timeRemaining || 0;
         usuarioAtual.textContent = auction.currentUser || 'Nenhum';
+        vencedor.textContent = 'Nenhum'; // Garante que não haja mensagem de vencedor durante o leilão
         // Atualiza o temporizador local se o tempo mudou (por exemplo, por outro usuário)
         if (auction.timeRemaining !== currentTimeRemaining && auction.timeRemaining > 0) {
           currentTimeRemaining = auction.timeRemaining;
@@ -370,6 +386,12 @@
         lanceAtual.textContent = 0;
         timer.textContent = 0;
         usuarioAtual.textContent = 'Nenhum';
+        // Exibe o vencedor apenas se o leilão terminou e houve lances
+        if (auction && auction.currentUser !== 'Nenhum') {
+          vencedor.textContent = `${auction.currentUser} ganhou o leilão do item ${auction.item}!`;
+        } else {
+          vencedor.textContent = 'Nenhum lance foi dado.';
+        }
       }
     });
 
