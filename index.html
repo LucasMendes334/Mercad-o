@@ -138,180 +138,397 @@
     <p>&copy; 2025 Mercadão Medieval</p>
   </footer>
 
-<!-- ... todo o seu HTML acima permanece igual ... -->
-
-<script>
-  // ===================== Firebase =====================
-  const firebaseConfig = {
-    apiKey: "AIzaSyDT0bGAvX7MyLdw3RM8Jskw5T1-2jTnfoE",
-    authDomain: "mercadao-6e54a.firebaseapp.com",
-    databaseURL: "https://mercadao-6e54a-default-rtdb.firebaseio.com",
-    projectId: "mercadao-6e54a",
-    storageBucket: "mercadao-6e54a.firebasestorage.app",
-    messagingSenderId: "603229319192",
-    appId: "1:603229319192:web:dab73e539880e6f328536d",
-    measurementId: "G-GBCKDBJ83Q"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-
-  // ===================== Troca em tempo real =====================
-  const defaultInventories = {
-    player1:['Espada Lendária','Escudo de Ferro','Poção de Cura'],
-    player2:['Armadura de Ferro','Machado de Guerra','Poção de Força']
-  };
-
-  function getItemImage(item){
-    const images = {
-      'Espada Lendária':'https://cdn-icons-png.flaticon.com/512/616/616554.png',
-      'Escudo de Ferro':'https://cdn-icons-png.flaticon.com/512/616/616554.png',
-      'Poção de Cura':'https://cdn-icons-png.flaticon.com/512/590/590685.png',
-      'Armadura de Ferro':'https://cdn-icons-png.flaticon.com/512/616/616430.png',
-      'Machado de Guerra':'https://cdn-icons-png.flaticon.com/512/616/616554.png',
-      'Poção de Força':'https://cdn-icons-png.flaticon.com/512/590/590681.png'
+  <script>
+    // ===================== Firebase =====================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDT0bGAvX7MyLdw3RM8Jskw5T1-2jTnfoE",
+      authDomain: "mercadao-6e54a.firebaseapp.com",
+      databaseURL: "https://mercadao-6e54a-default-rtdb.firebaseio.com",
+      projectId: "mercadao-6e54a",
+      storageBucket: "mercadao-6e54a.firebasestorage.app",
+      messagingSenderId: "603229319192",
+      appId: "1:603229319192:web:dab73e539880e6f328536d",
+      measurementId: "G-GBCKDBJ83Q"
     };
-    return images[item]||'https://via.placeholder.com/40';
-  }
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-  // Participar (apenas um slot por navegador)
-  function participar(player){
-    const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado && ocupado !== player){
-      alert(`❌ Você já está participando como ${ocupado}. Não pode entrar no outro slot neste navegador.`);
-      return;
+    // ===================== Leilão =====================
+    let auctionTimer = null;
+    let currentTimeRemaining = 0;
+
+    function iniciarLeilao() {
+      db.ref('auctions/auction1').once('value')
+        .then(snapshot => {
+          const auction = snapshot.val();
+          if (auction && auction.active) {
+            alert('Já existe um leilão ativo. Encerre-o antes de iniciar um novo.');
+            return;
+          }
+          const itemLeilao = document.getElementById('itemLeilao');
+          const lanceMinimo = document.getElementById('lanceMinimo');
+          const tempoInicial = document.getElementById('tempoInicial');
+          const itemAtual = document.getElementById('itemAtual');
+          const lanceAtual = document.getElementById('lanceAtual');
+          const timer = document.getElementById('timer');
+          const usuarioAtual = document.getElementById('usuarioAtual');
+
+          if (!itemLeilao || !lanceMinimo || !tempoInicial || !itemAtual || !lanceAtual || !timer || !usuarioAtual) {
+            console.error('DOM elements for auction not found');
+            alert('Erro: Elementos do leilão não encontrados.');
+            return;
+          }
+
+          const item = itemLeilao.value.trim();
+          const minBid = parseFloat(lanceMinimo.value);
+          const time = parseInt(tempoInicial.value);
+
+          if (!item || isNaN(minBid) || isNaN(time) || minBid <= 0 || time <= 0) {
+            alert('Por favor, preencha todos os campos corretamente.');
+            console.warn('Invalid auction inputs:', { item, minBid, time });
+            return;
+          }
+
+          const auctionData = {
+            item: item,
+            currentBid: minBid,
+            timeRemaining: time,
+            currentUser: 'Nenhum',
+            active: true
+          };
+
+          if (auctionTimer) {
+            clearInterval(auctionTimer);
+          }
+
+          db.ref('auctions/auction1').set(auctionData)
+            .then(() => {
+              console.log('Auction started:', auctionData);
+              itemAtual.textContent = item;
+              lanceAtual.textContent = minBid;
+              timer.textContent = time;
+              usuarioAtual.textContent = 'Nenhum';
+              itemLeilao.value = '';
+              lanceMinimo.value = '';
+              tempoInicial.value = '';
+
+              startAuctionTimer(time);
+            })
+            .catch(error => {
+              console.error('Failed to start auction:', error);
+              alert('Erro ao iniciar o leilão. Verifique o console.');
+            });
+        })
+        .catch(error => {
+          console.error('Failed to check active auction:', error);
+          alert('Erro ao verificar leilão ativo.');
+        });
     }
-    db.ref(`trades/trade1/${player}`).once("value").then(snap=>{
-      const dados = snap.val();
-      if(dados && dados.participando){
-        alert("❌ Esse slot já está ocupado!");
+
+    function startAuctionTimer(initialTime) {
+      currentTimeRemaining = initialTime;
+
+      if (auctionTimer) {
+        clearInterval(auctionTimer);
+      }
+
+      auctionTimer = setInterval(() => {
+        currentTimeRemaining--;
+        document.getElementById('timer').textContent = currentTimeRemaining;
+
+        db.ref('auctions/auction1').update({ timeRemaining: currentTimeRemaining })
+          .catch(error => {
+            console.error('Failed to update timeRemaining:', error);
+            alert('Erro ao atualizar o tempo do leilão.');
+          });
+
+        if (currentTimeRemaining <= 0) {
+          clearInterval(auctionTimer);
+          db.ref('auctions/auction1').update({ active: false })
+            .then(() => {
+              console.log('Auction ended');
+              document.getElementById('itemAtual').textContent = 'Nenhum';
+              document.getElementById('lanceAtual').textContent = 0;
+              document.getElementById('timer').textContent = 0;
+              document.getElementById('usuarioAtual').textContent = 'Nenhum';
+              alert('Leilão encerrado!');
+            })
+            .catch(error => {
+              console.error('Failed to end auction:', error);
+              alert('Erro ao encerrar o leilão.');
+            });
+        }
+      }, 1000);
+    }
+
+    function darLance() {
+      const usuario = document.getElementById('usuario');
+      const lance = document.getElementById('lance');
+      const lanceAtual = document.getElementById('lanceAtual');
+      const usuarioAtual = document.getElementById('usuarioAtual');
+      const timer = document.getElementById('timer');
+
+      if (!usuario || !lance || !lanceAtual || !usuarioAtual || !timer) {
+        console.error('DOM elements for bidding not found');
+        alert('Erro: Elementos do lance não encontrados.');
         return;
       }
-      db.ref(`trades/trade1/${player}`).update({participando:true});
-      localStorage.setItem("meuSlot", player);
-    });
-  }
 
-  // Sair da troca
-  function sair(player){
-    const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado !== player) return; // só dono pode sair
-    db.ref(`trades/trade1/${player}`).update({
-      participando:false,
-      selected:null,
-      approved:false,
-      inventarioAberto:false
-    });
-    localStorage.removeItem("meuSlot");
-  }
+      const user = usuario.value.trim();
+      const bid = parseFloat(lance.value);
 
-  // Abrir/fechar inventário (sincronizado)
-  function toggleInventory(player){
-    const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado !== player) return; // só dono abre/fecha
-    db.ref(`trades/trade1/${player}/inventarioAberto`).once("value").then(snap=>{
-      const aberto = snap.val();
-      db.ref(`trades/trade1/${player}/inventarioAberto`).set(!aberto);
-    });
-  }
-
-  // Atualizar inventário na tela
-  function updateInventory(player,data){
-    const inv = document.getElementById(`inventory-${player}`);
-    inv.innerHTML='';
-    const items = data?.inventory || defaultInventories[player];
-    const meuSlot = localStorage.getItem("meuSlot");
-
-    items.forEach(item=>{
-      const li = document.createElement('li');
-      li.innerHTML = `<img src="${getItemImage(item)}" class="item-image">${item}`;
-
-      // só dono pode clicar para selecionar
-      if(meuSlot === player){
-        li.onclick = ()=>selectItem(player,item);
+      if (!user || isNaN(bid) || bid <= 0) {
+        alert('Por favor, insira um nome válido e um lance maior que 0.');
+        console.warn('Invalid bid inputs:', { user, bid });
+        return;
       }
 
-      if(data?.selected===item) li.classList.add('selected');
-      inv.appendChild(li);
-    });
+      db.ref('auctions/auction1').once('value')
+        .then(snapshot => {
+          const auction = snapshot.val();
+          if (!auction || !auction.active) {
+            alert('Nenhum leilão ativo no momento.');
+            console.warn('No active auction found');
+            return;
+          }
 
-    // mostrar conforme Firebase
-    inv.style.display = data?.inventarioAberto ? 'block' : 'none';
-  }
+          const currentBid = parseFloat(auction.currentBid);
+          if (bid <= currentBid) {
+            alert('O lance deve ser maior que o lance atual (R$' + currentBid + ').');
+            console.warn('Bid too low:', bid, 'Current:', currentBid);
+            return;
+          }
 
-  // Selecionar item
-  function selectItem(player,item){
-    const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado !== player) return;
-    db.ref(`trades/trade1/${player}`).update({selected:item,approved:false});
-  }
+          // Verifica se o tempo restante é menor que 20 segundos
+          let newTimeRemaining = auction.timeRemaining;
+          if (newTimeRemaining < 20 && newTimeRemaining > 0) {
+            newTimeRemaining += 10; // Adiciona 10 segundos
+            console.log('Added 10 seconds to auction time:', newTimeRemaining);
+          }
 
-  // Aprovar troca
-  function aprovar(player){
-    const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado !== player) return;
-    db.ref(`trades/trade1/${player}/approved`).set(true);
-  }
+          // Atualiza o lance e, se necessário, o tempo no Firebase
+          const updates = {
+            currentBid: bid,
+            currentUser: user
+          };
+          if (newTimeRemaining !== auction.timeRemaining) {
+            updates.timeRemaining = newTimeRemaining;
+            currentTimeRemaining = newTimeRemaining; // Atualiza o temporizador local
+            startAuctionTimer(newTimeRemaining); // Reinicia o temporizador com o novo tempo
+          }
 
-  // Resetar troca
-  function resetTroca(){
-    db.ref('trades/trade1').set({
-      player1:{inventory:defaultInventories.player1, selected:null, approved:false, participando:false, inventarioAberto:false},
-      player2:{inventory:defaultInventories.player2, selected:null, approved:false, participando:false, inventarioAberto:false}
-    });
-    localStorage.removeItem("meuSlot");
-  }
-
-  // Atualizar status na tela
-  function updateStatus(trade){
-    const s = document.getElementById('status');
-    const p1 = trade.player1;
-    const p2 = trade.player2;
-    let statusText = '';
-    statusText += `Jogador 1: ${p1.participando?'✅ entrou':'❌ saiu'}, `;
-    statusText += `Selecionou: ${p1.selected||'Nada'}, `;
-    statusText += `Aprovou: ${p1.approved?'✅':'❌'}\n`;
-    statusText += `Jogador 2: ${p2.participando?'✅ entrou':'❌ saiu'}, `;
-    statusText += `Selecionou: ${p2.selected||'Nada'}, `;
-    statusText += `Aprovou: ${p2.approved?'✅':'❌'}`;
-    s.textContent = statusText;
-  }
-
-  // Observa trocas em tempo real
-  db.ref('trades/trade1').on('value',snap=>{
-    const trade = snap.val();
-    if(!trade) return;
-    updateInventory('player1',trade.player1);
-    updateInventory('player2',trade.player2);
-    updateStatus(trade);
-
-    // se ambos aprovaram e selecionaram
-    if(trade.player1.selected && trade.player2.selected && trade.player1.approved && trade.player2.approved){
-      const temp = trade.player1.selected;
-      db.ref('trades/trade1/player1/inventory').once('value').then(snap1=>{
-        let inv1 = snap1.val();
-        const idx1 = inv1.indexOf(trade.player1.selected);
-        if(idx1!==-1) inv1.splice(idx1,1,trade.player2.selected);
-        db.ref('trades/trade1/player1/inventory').set(inv1);
-      });
-      db.ref('trades/trade1/player2/inventory').once('value').then(snap2=>{
-        let inv2 = snap2.val();
-        const idx2 = inv2.indexOf(trade.player2.selected);
-        if(idx2!==-1) inv2.splice(idx2,1,temp);
-        db.ref('trades/trade1/player2/inventory').set(inv2);
-      });
-      db.ref('trades/trade1/player1/selected').set(null);
-      db.ref('trades/trade1/player2/selected').set(null);
-      db.ref('trades/trade1/player1/approved').set(false);
-      db.ref('trades/trade1/player2/approved').set(false);
-      document.getElementById('status').textContent='✅ Troca concluída!';
+          db.ref('auctions/auction1').update(updates)
+            .then(() => {
+              console.log('Bid placed:', { user, bid, newTimeRemaining });
+              lanceAtual.textContent = bid;
+              usuarioAtual.textContent = user;
+              if (newTimeRemaining !== auction.timeRemaining) {
+                timer.textContent = newTimeRemaining;
+              }
+              usuario.value = '';
+              lance.value = '';
+            })
+            .catch(error => {
+              console.error('Failed to place bid:', error);
+              alert('Erro ao dar lance. Verifique o console.');
+            });
+        })
+        .catch(error => {
+          console.error('Failed to fetch auction data:', error);
+          alert('Erro ao acessar o leilão. Verifique o console.');
+        });
     }
-  });
 
-  // Inicializar se não existir
-  db.ref("trades/trade1").once("value").then(snap=>{
-    if(!snap.exists()) resetTroca();
-  });
-</script>
+    // Real-time auction updates
+    db.ref('auctions/auction1').on('value', snapshot => {
+      const auction = snapshot.val();
+      const itemAtual = document.getElementById('itemAtual');
+      const lanceAtual = document.getElementById('lanceAtual');
+      const timer = document.getElementById('timer');
+      const usuarioAtual = document.getElementById('usuarioAtual');
+
+      if (!itemAtual || !lanceAtual || !timer || !usuarioAtual) {
+        console.error('DOM elements for auction updates not found');
+        return;
+      }
+
+      if (auction && auction.active) {
+        itemAtual.textContent = auction.item || 'Nenhum';
+        lanceAtual.textContent = auction.currentBid || 0;
+        timer.textContent = auction.timeRemaining || 0;
+        usuarioAtual.textContent = auction.currentUser || 'Nenhum';
+        // Atualiza o temporizador local se o tempo mudou (por exemplo, por outro usuário)
+        if (auction.timeRemaining !== currentTimeRemaining && auction.timeRemaining > 0) {
+          currentTimeRemaining = auction.timeRemaining;
+          startAuctionTimer(currentTimeRemaining);
+        }
+      } else {
+        if (auctionTimer) {
+          clearInterval(auctionTimer);
+        }
+        itemAtual.textContent = 'Nenhum';
+        lanceAtual.textContent = 0;
+        timer.textContent = 0;
+        usuarioAtual.textContent = 'Nenhum';
+      }
+    });
+
+    // ===================== Troca em tempo real =====================
+    const defaultInventories = {
+      player1: ['Espada Lendária', 'Escudo de Ferro', 'Poção de Cura'],
+      player2: ['Armadura de Ferro', 'Machado de Guerra', 'Poção de Força']
+    };
+
+    function getItemImage(item) {
+      const images = {
+        'Espada Lendária': 'https://cdn-icons-png.flaticon.com/512/616/616554.png',
+        'Escudo de Ferro': 'https://cdn-icons-png.flaticon.com/512/616/616554.png',
+        'Poção de Cura': 'https://cdn-icons-png.flaticon.com/512/590/590685.png',
+        'Armadura de Ferro': 'https://cdn-icons-png.flaticon.com/512/616/616430.png',
+        'Machado de Guerra': 'https://cdn-icons-png.flaticon.com/512/616/616554.png',
+        'Poção de Força': 'https://cdn-icons-png.flaticon.com/512/590/590681.png'
+      };
+      return images[item] || 'https://via.placeholder.com/40';
+    }
+
+    // Participar (apenas um slot por navegador)
+    function participar(player) {
+      const ocupado = localStorage.getItem("meuSlot");
+      if (ocupado && ocupado !== player) {
+        alert(`❌ Você já está participando como ${ocupado}. Não pode entrar no outro slot neste navegador.`);
+        return;
+      }
+      db.ref(`trades/trade1/${player}`).once("value").then(snap => {
+        const dados = snap.val();
+        if (dados && dados.participando) {
+          alert("❌ Esse slot já está ocupado!");
+          return;
+        }
+        db.ref(`trades/trade1/${player}`).update({ participando: true });
+        localStorage.setItem("meuSlot", player);
+      });
+    }
+
+    // Sair da troca
+    function sair(player) {
+      const ocupado = localStorage.getItem("meuSlot");
+      if (ocupado !== player) return; // só dono pode sair
+      db.ref(`trades/trade1/${player}`).update({
+        participando: false,
+        selected: null,
+        approved: false,
+        inventarioAberto: false
+      });
+      localStorage.removeItem("meuSlot");
+    }
+
+    // Abrir/fechar inventário (sincronizado)
+    function toggleInventory(player) {
+      const ocupado = localStorage.getItem("meuSlot");
+      if (ocupado !== player) return; // só dono abre/fecha
+      db.ref(`trades/trade1/${player}/inventarioAberto`).once("value").then(snap => {
+        const aberto = snap.val();
+        db.ref(`trades/trade1/${player}/inventarioAberto`).set(!aberto);
+      });
+    }
+
+    // Atualizar inventário na tela
+    function updateInventory(player, data) {
+      const inv = document.getElementById(`inventory-${player}`);
+      inv.innerHTML = '';
+      const items = data?.inventory || defaultInventories[player];
+      const meuSlot = localStorage.getItem("meuSlot");
+
+      items.forEach(item => {
+        const li = document.createElement('li');
+        li.innerHTML = `<img src="${getItemImage(item)}" class="item-image">${item}`;
+
+        // só dono pode clicar para selecionar
+        if (meuSlot === player) {
+          li.onclick = () => selectItem(player, item);
+        }
+
+        if (data?.selected === item) li.classList.add('selected');
+        inv.appendChild(li);
+      });
+
+      // mostrar conforme Firebase
+      inv.style.display = data?.inventarioAberto ? 'block' : 'none';
+    }
+
+    // Selecionar item
+    function selectItem(player, item) {
+      const ocupado = localStorage.getItem("meuSlot");
+      if (ocupado !== player) return;
+      db.ref(`trades/trade1/${player}`).update({ selected: item, approved: false });
+    }
+
+    // Aprovar troca
+    function aprovar(player) {
+      const ocupado = localStorage.getItem("meuSlot");
+      if (ocupado !== player) return;
+      db.ref(`trades/trade1/${player}/approved`).set(true);
+    }
+
+    // Resetar troca
+    function resetTroca() {
+      db.ref('trades/trade1').set({
+        player1: { inventory: defaultInventories.player1, selected: null, approved: false, participando: false, inventarioAberto: false },
+        player2: { inventory: defaultInventories.player2, selected: null, approved: false, participando: false, inventarioAberto: false }
+      });
+      localStorage.removeItem("meuSlot");
+    }
+
+    // Atualizar status na tela
+    function updateStatus(trade) {
+      const s = document.getElementById('status');
+      const p1 = trade.player1;
+      const p2 = trade.player2;
+      let statusText = '';
+      statusText += `Jogador 1: ${p1.participando ? '✅ entrou' : '❌ saiu'}, `;
+      statusText += `Selecionou: ${p1.selected || 'Nada'}, `;
+      statusText += `Aprovou: ${p1.approved ? '✅' : '❌'}\n`;
+      statusText += `Jogador 2: ${p2.participando ? '✅ entrou' : '❌ saiu'}, `;
+      statusText += `Selecionou: ${p2.selected || 'Nada'}, `;
+      statusText += `Aprovou: ${p2.approved ? '✅' : '❌'}`;
+      s.textContent = statusText;
+    }
+
+    // Observa trocas em tempo real
+    db.ref('trades/trade1').on('value', snap => {
+      const trade = snap.val();
+      if (!trade) return;
+      updateInventory('player1', trade.player1);
+      updateInventory('player2', trade.player2);
+      updateStatus(trade);
+
+      // se ambos aprovaram e selecionaram
+      if (trade.player1.selected && trade.player2.selected && trade.player1.approved && trade.player2.approved) {
+        const temp = trade.player1.selected;
+        db.ref('trades/trade1/player1/inventory').once('value').then(snap1 => {
+          let inv1 = snap1.val();
+          const idx1 = inv1.indexOf(trade.player1.selected);
+          if (idx1 !== -1) inv1.splice(idx1, 1, trade.player2.selected);
+          db.ref('trades/trade1/player1/inventory').set(inv1);
+        });
+        db.ref('trades/trade1/player2/inventory').once('value').then(snap2 => {
+          let inv2 = snap2.val();
+          const idx2 = inv2.indexOf(trade.player2.selected);
+          if (idx2 !== -1) inv2.splice(idx2, 1, temp);
+          db.ref('trades/trade1/player2/inventory').set(inv2);
+        });
+        db.ref('trades/trade1/player1/selected').set(null);
+        db.ref('trades/trade1/player2/selected').set(null);
+        db.ref('trades/trade1/player1/approved').set(false);
+        db.ref('trades/trade1/player2/approved').set(false);
+        document.getElementById('status').textContent = '✅ Troca concluída!';
+      }
+    });
+
+    // Inicializar se não existir
+    db.ref("trades/trade1").once("value").then(snap => {
+      if (!snap.exists()) resetTroca();
+    });
+  </script>
 </body>
 </html>
-
