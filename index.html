@@ -155,9 +155,6 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  // ===================== Leilão =====================
-  /* --- (mantive igual ao seu) --- */
-
   // ===================== Troca em tempo real =====================
   const defaultInventories = {
     player1:['Espada Lendária','Escudo de Ferro','Poção de Cura'],
@@ -176,7 +173,7 @@
     return images[item]||'https://via.placeholder.com/40';
   }
 
-  // Participar (garante apenas 1 slot por navegador)
+  // Participar (apenas um slot por navegador)
   function participar(player){
     const ocupado = localStorage.getItem("meuSlot");
     if(ocupado && ocupado !== player){
@@ -194,55 +191,77 @@
     });
   }
 
-  // Sair libera a vaga
+  // Sair da troca
   function sair(player){
-    db.ref(`trades/trade1/${player}`).update({participando:false,selected:null,approved:false});
     const ocupado = localStorage.getItem("meuSlot");
-    if(ocupado === player){
-      localStorage.removeItem("meuSlot");
-    }
+    if(ocupado !== player) return; // só dono pode sair
+    db.ref(`trades/trade1/${player}`).update({
+      participando:false,
+      selected:null,
+      approved:false,
+      inventarioAberto:false
+    });
+    localStorage.removeItem("meuSlot");
   }
 
-  // Abrir/fechar inventário
+  // Abrir/fechar inventário (sincronizado)
   function toggleInventory(player){
-    const inv = document.getElementById(`inventory-${player}`);
-    inv.style.display = inv.style.display==='block' ? 'none' : 'block';
+    const ocupado = localStorage.getItem("meuSlot");
+    if(ocupado !== player) return; // só dono abre/fecha
+    db.ref(`trades/trade1/${player}/inventarioAberto`).once("value").then(snap=>{
+      const aberto = snap.val();
+      db.ref(`trades/trade1/${player}/inventarioAberto`).set(!aberto);
+    });
   }
 
-  // Mostrar inventário em tempo real
+  // Atualizar inventário na tela
   function updateInventory(player,data){
     const inv = document.getElementById(`inventory-${player}`);
     inv.innerHTML='';
     const items = data?.inventory || defaultInventories[player];
+    const meuSlot = localStorage.getItem("meuSlot");
+
     items.forEach(item=>{
       const li = document.createElement('li');
       li.innerHTML = `<img src="${getItemImage(item)}" class="item-image">${item}`;
-      li.onclick = ()=>selectItem(player,item);
+
+      // só dono pode clicar para selecionar
+      if(meuSlot === player){
+        li.onclick = ()=>selectItem(player,item);
+      }
+
       if(data?.selected===item) li.classList.add('selected');
       inv.appendChild(li);
     });
+
+    // mostrar conforme Firebase
+    inv.style.display = data?.inventarioAberto ? 'block' : 'none';
   }
 
-  // Seleção em tempo real
+  // Selecionar item
   function selectItem(player,item){
+    const ocupado = localStorage.getItem("meuSlot");
+    if(ocupado !== player) return;
     db.ref(`trades/trade1/${player}`).update({selected:item,approved:false});
   }
 
   // Aprovar troca
   function aprovar(player){
+    const ocupado = localStorage.getItem("meuSlot");
+    if(ocupado !== player) return;
     db.ref(`trades/trade1/${player}/approved`).set(true);
   }
 
   // Resetar troca
   function resetTroca(){
     db.ref('trades/trade1').set({
-      player1:{inventory:defaultInventories.player1, selected:null, approved:false, participando:false},
-      player2:{inventory:defaultInventories.player2, selected:null, approved:false, participando:false}
+      player1:{inventory:defaultInventories.player1, selected:null, approved:false, participando:false, inventarioAberto:false},
+      player2:{inventory:defaultInventories.player2, selected:null, approved:false, participando:false, inventarioAberto:false}
     });
     localStorage.removeItem("meuSlot");
   }
 
-  // Status em tempo real
+  // Atualizar status na tela
   function updateStatus(trade){
     const s = document.getElementById('status');
     const p1 = trade.player1;
@@ -265,8 +284,8 @@
     updateInventory('player2',trade.player2);
     updateStatus(trade);
 
+    // se ambos aprovaram e selecionaram
     if(trade.player1.selected && trade.player2.selected && trade.player1.approved && trade.player2.approved){
-      // Troca confirmada
       const temp = trade.player1.selected;
       db.ref('trades/trade1/player1/inventory').once('value').then(snap1=>{
         let inv1 = snap1.val();
@@ -295,3 +314,4 @@
 </script>
 </body>
 </html>
+
